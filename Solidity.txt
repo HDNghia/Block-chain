@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.6.0;
+
+contract campaignFactoty {
+    address[] deployedCampaign;
+
+
+    function creatNewCampign(uint8 minimum) public  {
+        Campaign newCampaign= new Campaign(minimum, msg.sender);
+        deployedCampaign.push(address(newCampaign));
+        
+    }
+
+    function getDeployedCampaign() public view returns(address[] memory){
+        return deployedCampaign;
+    }
+}
+
+contract Campaign{
+    struct Request{
+        string description;
+        uint8 value;
+        address payable recipient;
+        bool complete;
+        uint approvalCount;
+        mapping(address => bool) approvals;
+    }
+    address public manager;
+    uint8 public minimumContribution;
+    mapping(address => bool) public approvers;
+    uint approverCount;
+    Request[] public requests;
+    //mapping(uint => Request[]) public Irequest;
+    modifier restricted(){
+        require(msg.sender == manager);
+        _;
+    }
+    modifier isApprover(){
+        require(approvers[msg.sender] == true);
+        _;
+    }
+    // modifier xac dinh approver
+
+    constructor (uint8 _minimum, address creator) public  {
+        manager = creator;
+        minimumContribution = _minimum;
+        
+    }
+    event ReceivedEth(uint256 amount);
+
+    function fundme() public payable {
+        emit ReceivedEth(msg.value);
+    }
+        receive() external payable  { 
+        fundme();
+    }
+
+    fallback() external payable {
+        fundme();
+    }
+    function contribute() public payable {
+        require(msg.value > minimumContribution);
+        //approvers.push(msg.sender);
+        address newApprover = msg.sender;
+        approvers[newApprover] = true;
+        approverCount++;
+    }
+    function invite( address payable invitee) public{
+        require(msg.sender == manager);
+        require(invitee != address(0));
+        approvers[invitee] = true;
+        approverCount++;
+    }
+    function createRequest( string memory _description, 
+                            uint8 _value, 
+                            address payable _recipient
+                        ) restricted public {
+        //Request memory newRequest = Request(_description, _value, _recipient, false);
+        Request memory newRequest = Request({
+            description : _description,
+            value       : _value,
+            recipient   : _recipient,
+            complete    : false,
+            approvalCount: 0
+        });
+        requests.push(newRequest);
+    }
+    // 1. Mỗi người chỉ có thể bỏ phiếu cho mỗi request duy nhất 1 lần
+    // 2. Dự án có thể có nhiều approver, cần quản lý được ai bỏ phiếu cho request nào, bỏ phiếu bao nhiêu request
+    function approveRequest(uint8 index) isApprover public {
+        Request storage newApproveRequest = requests[index];
+
+        require(!newApproveRequest.approvals[msg.sender]);
+        
+        newApproveRequest.approvals[msg.sender] = true;
+        newApproveRequest.approvalCount ++;
+    }
+
+    function finalizeRequest(uint8 index) restricted public payable {
+        Request storage request = requests[index];
+        require(!request.complete,"this request already completed");
+        require(request.approvalCount > approverCount/2);
+
+
+        request.recipient.transfer(request.value * 1e18);
+        request.complete == true;
+    }
+
+    function getBanlance() public view returns(uint ){
+        return (msg.sender).balance;
+    }
+}
